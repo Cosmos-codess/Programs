@@ -697,9 +697,27 @@ document.getElementById('backFromCapture').addEventListener('click', ()=>{
 
 function updateCaptureEnabled(){ btnCapture.disabled = !(lightingOk && focusOk && lastGps); }
 
+// The preview box is CSS aspect-ratio 3/4, but the camera's native frame is usually a
+// different ratio (16:9, 4:3, etc). object-fit:cover crops the *display* to fit —
+// this computes that same crop so pixel sampling matches what's actually on screen.
+const CONTAINER_ASPECT = 3/4; // width/height
+function getCoverCrop(vw, vh){
+  const videoAspect = vw/vh;
+  if(videoAspect > CONTAINER_ASPECT){
+    const cropW = vh*CONTAINER_ASPECT;
+    return { cropW, cropH: vh, offsetX:(vw-cropW)/2, offsetY:0 };
+  }else{
+    const cropH = vw/CONTAINER_ASPECT;
+    return { cropW: vw, cropH, offsetX:0, offsetY:(vh-cropH)/2 };
+  }
+}
+
 function sampleRegion(ctx, xFrac, yFrac, wFrac, hFrac, vw, vh){
-  const x = Math.floor(xFrac*vw), y = Math.floor(yFrac*vh);
-  const w = Math.floor(wFrac*vw), h = Math.floor(hFrac*vh);
+  const crop = getCoverCrop(vw, vh);
+  const x = Math.floor(crop.offsetX + xFrac*crop.cropW);
+  const y = Math.floor(crop.offsetY + yFrac*crop.cropH);
+  const w = Math.floor(wFrac*crop.cropW);
+  const h = Math.floor(hFrac*crop.cropH);
   const data = ctx.getImageData(x, y, Math.max(1,w), Math.max(1,h)).data;
   let r=0,g=0,b=0,n=0, minLum=255, maxLum=0;
   for(let i=0;i<data.length;i+=4){
