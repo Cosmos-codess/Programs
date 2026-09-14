@@ -1,0 +1,520 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Nothing Here Goes to Waste</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,wght@0,500;0,600;1,500&family=Work+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<style>
+  :root {
+    --bg: #1B2420;
+    --surface: #232F29;
+    --surface-2: #2B3A33;
+    --ink: #F3EFE3;
+    --ink-muted: #9FB0A4;
+    --line: rgba(243, 239, 227, 0.12);
+    --teal: #4FB3A9;
+    --amber: #E3A33E;
+    --coral: #D9634A;
+    --purple: #9C86BE;
+    --radius: 6px;
+    --font-display: 'Fraunces', Georgia, serif;
+    --font-body: 'Work Sans', -apple-system, sans-serif;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    background: var(--bg);
+    color: var(--ink);
+    font-family: var(--font-body);
+    margin: 0;
+    padding: 0 20px 80px;
+    line-height: 1.5;
+  }
+
+  .wrap { max-width: 720px; margin: 0 auto; }
+
+  header {
+    padding: 48px 0 32px;
+    border-bottom: 1px solid var(--line);
+    margin-bottom: 36px;
+  }
+
+  .status-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 0.82em;
+    color: var(--ink-muted);
+    margin-bottom: 18px;
+  }
+
+  .dot {
+    width: 8px; height: 8px; border-radius: 50%;
+    background: var(--ink-muted);
+    flex-shrink: 0;
+  }
+  .dot.live { background: var(--teal); }
+  .dot.down { background: var(--coral); }
+
+  h1 {
+    font-family: var(--font-display);
+    font-weight: 600;
+    font-size: clamp(28px, 5vw, 40px);
+    margin: 0 0 10px;
+    letter-spacing: -0.01em;
+  }
+
+  header p {
+    color: var(--ink-muted);
+    max-width: 52ch;
+    margin: 0;
+    font-size: 0.98em;
+  }
+
+  .panel {
+    position: relative;
+    background: var(--surface);
+    border-radius: var(--radius);
+    padding: 28px 26px;
+    margin-bottom: 22px;
+    overflow: hidden;
+  }
+
+  .panel::before {
+    content: "";
+    position: absolute;
+    left: 0; top: 0; bottom: 0;
+    width: 4px;
+  }
+  .panel.teal::before { background: var(--teal); }
+  .panel.amber::before { background: var(--amber); }
+  .panel.purple::before { background: var(--purple); }
+
+  .panel .num {
+    position: absolute;
+    top: 6px; right: 18px;
+    font-family: var(--font-display);
+    font-style: italic;
+    font-size: 64px;
+    color: var(--ink);
+    opacity: 0.05;
+    line-height: 1;
+    pointer-events: none;
+  }
+
+  .panel h2 {
+    font-family: var(--font-display);
+    font-weight: 600;
+    font-size: 1.35em;
+    margin: 0 0 6px;
+  }
+
+  .panel > p.desc {
+    color: var(--ink-muted);
+    font-size: 0.92em;
+    margin: 0 0 20px;
+    max-width: 48ch;
+  }
+
+  label {
+    display: block;
+    font-size: 0.8em;
+    color: var(--ink-muted);
+    margin: 14px 0 6px;
+  }
+
+  input, select {
+    width: 100%;
+    background: var(--surface-2);
+    border: 1px solid var(--line);
+    color: var(--ink);
+    padding: 10px 12px;
+    border-radius: 4px;
+    font-family: var(--font-body);
+    font-size: 0.95em;
+  }
+
+  input:focus, select:focus, button:focus-visible {
+    outline: 2px solid var(--ink);
+    outline-offset: 2px;
+  }
+
+  button {
+    margin-top: 18px;
+    border: none;
+    border-radius: 4px;
+    padding: 11px 20px;
+    font-family: var(--font-body);
+    font-weight: 600;
+    font-size: 0.92em;
+    cursor: pointer;
+    color: #14201A;
+  }
+
+  @media (prefers-reduced-motion: no-preference) {
+    button { transition: filter 0.15s ease; }
+    button:hover { filter: brightness(1.1); }
+  }
+
+  .panel.teal button { background: var(--teal); }
+  .panel.amber button { background: var(--amber); }
+  .panel.purple button { background: var(--purple); color: #1B1420; }
+
+  .result {
+    margin-top: 16px;
+    font-size: 0.92em;
+    line-height: 1.6;
+  }
+  .result.ok { color: var(--teal); }
+  .result.err { color: var(--coral); }
+
+  .listing-row {
+    border-top: 1px solid var(--line);
+    padding: 14px 0;
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 16px;
+    flex-wrap: wrap;
+  }
+  .listing-row:first-child { border-top: none; }
+
+  .listing-main { flex: 1; min-width: 200px; }
+  .listing-main strong { font-family: var(--font-display); font-size: 1.05em; }
+  .listing-meta { color: var(--ink-muted); font-size: 0.85em; margin-top: 4px; }
+
+  .badge {
+    display: inline-block;
+    padding: 3px 10px;
+    border-radius: 100px;
+    font-size: 0.75em;
+    font-weight: 600;
+    margin-top: 4px;
+  }
+  .badge.on_track { background: rgba(79,179,169,0.18); color: var(--teal); }
+  .badge.urgent { background: rgba(227,163,62,0.18); color: var(--amber); }
+  .badge.expired { background: rgba(217,99,74,0.18); color: var(--coral); }
+  .badge.claimed { background: rgba(156,134,190,0.18); color: var(--purple); }
+
+  .claim-form {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+  }
+  .claim-form input {
+    width: 110px;
+  }
+  .claim-form button {
+    margin-top: 0;
+    background: var(--purple);
+    color: #1B1420;
+    padding: 9px 14px;
+  }
+
+  .empty-state {
+    color: var(--ink-muted);
+    font-style: italic;
+    padding: 8px 0;
+  }
+
+  canvas { margin-top: 8px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <div class="status-row">
+    <span class="dot" id="statusDot"></span>
+    <span id="statusText">Checking connection to backend…</span>
+  </div>
+  <h1>Nothing here goes to waste.</h1>
+  <p>Predict what to cook, list what's left over, and get it to someone who needs it — before it needs to be thrown away.</p>
+</header>
+
+<!-- 1. Demand Predictor -->
+<section class="panel teal">
+  <span class="num">1</span>
+  <h2>What to cook today</h2>
+  <p class="desc">Enter today's numbers to get a recommended cooking amount, based on expected attendance.</p>
+  <label for="people">Expected people today</label>
+  <input type="number" id="people" value="500">
+  <label for="day">Day of week</label>
+  <select id="day">
+    <option value="0">Monday</option>
+    <option value="1">Tuesday</option>
+    <option value="2">Wednesday</option>
+    <option value="3">Thursday</option>
+    <option value="4">Friday</option>
+    <option value="5">Saturday</option>
+    <option value="6">Sunday</option>
+  </select>
+  <button onclick="getPrediction()">Calculate amount to cook</button>
+  <div class="result" id="predictionResult"></div>
+</section>
+
+<!-- 2. Supplier Registration -->
+<section class="panel teal">
+  <span class="num">2</span>
+  <h2>Register your kitchen</h2>
+  <p class="desc">For hotels, restaurants, canteens, or food processing units with surplus to give or sell.</p>
+  <label for="supName">Business name</label>
+  <input type="text" id="supName" value="Green Leaf Restaurant">
+  <label for="supType">Type</label>
+  <select id="supType">
+    <option value="hotel">Hotel</option>
+    <option value="restaurant" selected>Restaurant</option>
+    <option value="canteen">Institutional canteen</option>
+    <option value="processing_unit">Food processing unit</option>
+  </select>
+  <label for="supLocation">Location</label>
+  <input type="text" id="supLocation" value="Banjara Hills, Hyderabad">
+  <label for="supLicense">FSSAI license number (optional)</label>
+  <input type="text" id="supLicense" placeholder="e.g. 12345678901234">
+  <button onclick="registerSupplier()">Register kitchen</button>
+  <div class="result" id="supplierResult"></div>
+</section>
+
+<!-- 3. Buyer Registration -->
+<section class="panel purple">
+  <span class="num">3</span>
+  <h2>Register your organization</h2>
+  <p class="desc">For NGOs, orphanages, old-age homes, or shelters that can use donated or discounted food.</p>
+  <label for="buyName">Organization name</label>
+  <input type="text" id="buyName" value="Sunshine Orphanage">
+  <label for="buyType">Type</label>
+  <select id="buyType">
+    <option value="orphanage" selected>Orphanage</option>
+    <option value="ngo">NGO</option>
+    <option value="old_age_home">Old-age home</option>
+    <option value="shelter">Shelter</option>
+  </select>
+  <label for="buyLocation">Location</label>
+  <input type="text" id="buyLocation" value="Jubilee Hills, Hyderabad">
+  <label for="buyRegNum">Registration number (optional)</label>
+  <input type="text" id="buyRegNum" placeholder="e.g. NGO/2019/00123">
+  <button onclick="registerBuyer()">Register organization</button>
+  <div class="result" id="buyerResult"></div>
+</section>
+
+<!-- 4. Post a Surplus Listing -->
+<section class="panel amber">
+  <span class="num">4</span>
+  <h2>List surplus food</h2>
+  <p class="desc">Kitchens use their ID from step 2 to post food that's ready to be claimed.</p>
+  <label for="listSupplierId">Your supplier ID</label>
+  <input type="number" id="listSupplierId" value="1">
+  <label for="listFoodName">Food item</label>
+  <input type="text" id="listFoodName" value="Veg biryani & paneer gravy">
+  <label for="listQty">Quantity (kg)</label>
+  <input type="number" id="listQty" value="15">
+  <label for="listType">Listing type</label>
+  <select id="listType">
+    <option value="donation">Free donation</option>
+    <option value="discounted_sale" selected>Discounted bulk sale</option>
+  </select>
+  <label for="listPrice">Price per kg (₹, 0 if donation)</label>
+  <input type="number" id="listPrice" value="50">
+  <label for="listHours">Chef's shelf-life estimate (hours)</label>
+  <input type="number" id="listHours" value="8">
+  <button onclick="postListing()">List this food</button>
+  <div class="result" id="listingResult"></div>
+</section>
+
+<!-- 5. Browse & Claim Listings -->
+<section class="panel purple">
+  <span class="num">5</span>
+  <h2>Find food to claim</h2>
+  <p class="desc">Organizations browse what's currently available and claim it with their buyer ID from step 3.</p>
+  <button onclick="browseListings()">Refresh listings</button>
+  <div id="listingsBrowse" style="margin-top: 12px;"></div>
+</section>
+
+<!-- 6. Impact -->
+<section class="panel teal">
+  <span class="num">6</span>
+  <h2>Impact so far</h2>
+  <p class="desc">CO₂ avoided by redistributing food instead of sending it to a landfill.</p>
+  <canvas id="impactChart" height="140"></canvas>
+</section>
+
+</div>
+
+<script>
+const API = 'http://127.0.0.1:8000';
+
+async function checkStatus() {
+  const dot = document.getElementById('statusDot');
+  const text = document.getElementById('statusText');
+  try {
+    const res = await fetch(`${API}/suppliers`);
+    if (res.ok) {
+      dot.className = 'dot live';
+      text.textContent = 'Connected to backend';
+    } else {
+      throw new Error();
+    }
+  } catch {
+    dot.className = 'dot down';
+    text.textContent = 'Backend not reachable — make sure uvicorn is running';
+  }
+}
+checkStatus();
+
+function showResult(elId, ok, message) {
+  const el = document.getElementById(elId);
+  el.className = `result ${ok ? 'ok' : 'err'}`;
+  el.textContent = message;
+}
+
+async function getPrediction() {
+  const attendees = document.getElementById('people').value;
+  const day = document.getElementById('day').value;
+  try {
+    const response = await fetch(`${API}/predict`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ day_of_week: parseInt(day), expected_attendees: parseInt(attendees) })
+    });
+    const data = await response.json();
+    showResult('predictionResult', true, `Recommended: ${data.recommended_cook_kg} kg (~${data.estimated_meals} meals)`);
+  } catch {
+    showResult('predictionResult', false, "Couldn't reach the backend. Check that uvicorn is running.");
+  }
+}
+
+async function registerSupplier() {
+  const body = {
+    name: document.getElementById('supName').value,
+    org_type: document.getElementById('supType').value,
+    location: document.getElementById('supLocation').value,
+    license_number: document.getElementById('supLicense').value || null
+  };
+  try {
+    const response = await fetch(`${API}/suppliers/register`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body)
+    });
+    const data = await response.json();
+    showResult('supplierResult', response.ok, response.ok
+      ? `Registered. Your supplier ID is ${data.id} — use it in step 4.`
+      : `Error: ${JSON.stringify(data.detail || data)}`);
+  } catch {
+    showResult('supplierResult', false, "Couldn't reach the backend. Check that uvicorn is running.");
+  }
+}
+
+async function registerBuyer() {
+  const body = {
+    name: document.getElementById('buyName').value,
+    org_type: document.getElementById('buyType').value,
+    location: document.getElementById('buyLocation').value,
+    registration_number: document.getElementById('buyRegNum').value || null
+  };
+  try {
+    const response = await fetch(`${API}/buyers/register`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body)
+    });
+    const data = await response.json();
+    showResult('buyerResult', response.ok, response.ok
+      ? `Registered. Your buyer ID is ${data.id} — use it in step 5 to claim food.`
+      : `Error: ${JSON.stringify(data.detail || data)}`);
+  } catch {
+    showResult('buyerResult', false, "Couldn't reach the backend. Check that uvicorn is running.");
+  }
+}
+
+async function postListing() {
+  const body = {
+    supplier_id: parseInt(document.getElementById('listSupplierId').value),
+    food_name: document.getElementById('listFoodName').value,
+    quantity_kg: parseFloat(document.getElementById('listQty').value),
+    listing_type: document.getElementById('listType').value,
+    price_per_kg: parseFloat(document.getElementById('listPrice').value),
+    chef_estimate_hours: parseFloat(document.getElementById('listHours').value)
+  };
+  try {
+    const response = await fetch(`${API}/listings`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body)
+    });
+    const data = await response.json();
+    showResult('listingResult', response.ok, response.ok
+      ? `Listed. Listing ID ${data.id} is now visible to buyers in step 5.`
+      : `Error: ${JSON.stringify(data.detail || data)}`);
+  } catch {
+    showResult('listingResult', false, "Couldn't reach the backend. Check that uvicorn is running.");
+  }
+}
+
+async function browseListings() {
+  const container = document.getElementById('listingsBrowse');
+  try {
+    const response = await fetch(`${API}/listings`);
+    const listings = await response.json();
+    if (listings.length === 0) {
+      container.innerHTML = '<p class="empty-state">No food listed yet. Post something in step 4 first.</p>';
+      return;
+    }
+    container.innerHTML = listings.map(l => `
+      <div class="listing-row">
+        <div class="listing-main">
+          <strong>${l.food_name}</strong> — ${l.quantity_kg} kg
+          <div class="listing-meta">${l.listing_type === 'donation' ? 'Free donation' : '₹' + l.price_per_kg + '/kg'}</div>
+          <span class="badge ${l.status}">${l.status.replace('_', ' ')}</span>
+        </div>
+        <div class="claim-form">
+          <input type="number" placeholder="Buyer ID" id="claimBuyer${l.id}">
+          <button onclick="claimListing(${l.id})">Claim</button>
+        </div>
+      </div>
+    `).join('');
+  } catch {
+    container.innerHTML = '<p class="empty-state">Couldn\'t reach the backend. Check that uvicorn is running.</p>';
+  }
+}
+
+async function claimListing(listingId) {
+  const buyerId = document.getElementById(`claimBuyer${listingId}`).value;
+  if (!buyerId) { alert('Enter your buyer ID first.'); return; }
+  try {
+    const response = await fetch(`${API}/listings/${listingId}/claim?buyer_id=${buyerId}`, { method: 'POST' });
+    const data = await response.json();
+    alert(response.ok ? `Claimed. Status: ${data.status}` : `Error: ${JSON.stringify(data.detail || data)}`);
+    browseListings();
+  } catch {
+    alert("Couldn't reach the backend. Check that uvicorn is running.");
+  }
+}
+
+const ctx = document.getElementById('impactChart').getContext('2d');
+new Chart(ctx, {
+  type: 'bar',
+  data: {
+    labels: ['Week 1', 'Week 2', 'Week 3', 'Week 4'],
+    datasets: [{
+      label: 'CO₂ avoided (kg)',
+      data: [120, 190, 300, 250],
+      backgroundColor: '#4FB3A9',
+      borderRadius: 4
+    }]
+  },
+  options: {
+    plugins: { legend: { labels: { color: '#F3EFE3' } } },
+    scales: {
+      x: { ticks: { color: '#9FB0A4' }, grid: { color: 'rgba(243,239,227,0.08)' } },
+      y: { ticks: { color: '#9FB0A4' }, grid: { color: 'rgba(243,239,227,0.08)' } }
+    }
+  }
+});
+</script>
+</body>
+</html>
