@@ -761,17 +761,43 @@ function rgbToHsv(r,g,b){
   return { h, s, v };
 }
 
-function classify(cardSample, testSample){
+function classify(cardSample, testSample, testType){
   const target = 200;
-  const scale = { r: target/Math.max(cardSample.r,1), g: target/Math.max(cardSample.g,1), b: target/Math.max(cardSample.b,1) };
-  const corrected = { r: Math.min(255,testSample.r*scale.r), g: Math.min(255,testSample.g*scale.g), b: Math.min(255,testSample.b*scale.b) };
+  const MAX_SCALE = 1.8; // caps correction so a very dark/bright card can't blow out the result
+  const scale = {
+    r: Math.min(MAX_SCALE, target/Math.max(cardSample.r,1)),
+    g: Math.min(MAX_SCALE, target/Math.max(cardSample.g,1)),
+    b: Math.min(MAX_SCALE, target/Math.max(cardSample.b,1))
+  };
+  const corrected = {
+    r: Math.min(255,testSample.r*scale.r),
+    g: Math.min(255,testSample.g*scale.g),
+    b: Math.min(255,testSample.b*scale.b)
+  };
   const hsv = rgbToHsv(corrected.r, corrected.g, corrected.b);
-  let category, confidence;
-  if(hsv.s < 0.12){ category='NEGATIVE'; confidence=Math.round((1-hsv.s/0.12)*30+55); }
-  else if((hsv.h<20 || hsv.h>320) && hsv.s>0.25){ category='POSITIVE'; confidence=Math.round(Math.min(hsv.s,1)*35+55); }
-  else if(hsv.h>250 && hsv.h<320 && hsv.s>0.2){ category='POSITIVE'; confidence=Math.round(Math.min(hsv.s,1)*30+50); }
-  else { category='INCONCLUSIVE'; confidence=45; }
-  return { category, confidence };
+
+  // Colorless/clear reading = negative, regardless of any faint hue noise
+  if(hsv.s < 0.15){
+    return { category:'NEGATIVE', confidence: Math.round((1-hsv.s/0.15)*30+55) };
+  }
+
+  // Each reagent turns a different colour when positive — approximate hue targets below.
+  // These are simplified starting points for the prototype, not calibrated lab values.
+  const REAGENT_POSITIVE_HUE = {
+    'Marquis': 280,   // purple/violet
+    'Mecke': 170,     // blue-green
+    "Simon's": 210,   // blue
+    'Scott': 210,     // blue (cobalt thiocyanate)
+    'Other': 280
+  };
+  const targetHue = REAGENT_POSITIVE_HUE[testType] ?? 280;
+  const hueDist = Math.abs(hsv.h - targetHue) > 180 ? 360 - Math.abs(hsv.h - targetHue) : Math.abs(hsv.h - targetHue);
+  const HUE_MATCH_THRESHOLD = 40; // degrees of hue tolerance to still count as a match
+
+  if(hueDist < HUE_MATCH_THRESHOLD){
+    return { category:'POSITIVE', confidence: Math.round(100 - (hueDist/HUE_MATCH_THRESHOLD)*40) };
+  }
+  return { category:'INCONCLUSIVE', confidence: 40 };
 }
 
 let pendingRecord = null;
@@ -781,7 +807,7 @@ btnCapture.addEventListener('click', async ()=>{
   ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
   const card = sampleRegion(ctx, 0.08, 0.72, 0.34, 0.20, canvas.width, canvas.height);
   const testArea = sampleRegion(ctx, 0.22, 0.14, 0.56, 0.28, canvas.width, canvas.height);
-  const result = classify(card, testArea);
+  const result = classify(card, testArea, document.getElementById('testType').value);
 
   const timestamp = new Date();
   const gpsText = lastGps ? `${lastGps.lat.toFixed(6)}, ${lastGps.lon.toFixed(6)} (±${Math.round(lastGps.accuracy)}m)` : 'GPS unavailable';
