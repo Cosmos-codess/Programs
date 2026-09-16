@@ -40,7 +40,104 @@ function sharpness(c){const ctx=c.getContext('2d',{willReadFrequently:true}),W=M
 function renderAnalysis(a,qualityPassed){const q=a.quality,r=a.ref,t=a.test,c=a.classification;const finalCategory=qualityPassed?c.category:'INCONCLUSIVE';const finalReason=qualityPassed?c.reason:'Image quality did not meet all critical checks, so classification is inconclusive.';a.classification.category=finalCategory;a.classification.reason=finalReason;const cls=finalCategory.toLowerCase();$('analysisContent').innerHTML=`<div class="result-banner ${cls}"><div class="eyebrow">FIELD SCREENING RESULT</div><h3>${finalCategory==='POSITIVE'?'PRESUMPTIVE POSITIVE':finalCategory==='NEGATIVE'?'PRESUMPTIVE NEGATIVE':'INCONCLUSIVE'}</h3><p>${finalReason}</p></div><div class="analysis-grid"><div class="metric"><span>Brightness</span><strong>${q.brightness.toFixed(0)} ${q.brightnessPass?'✓':'⚠'}</strong></div><div class="metric"><span>Glare</span><strong>${q.glare.toFixed(1)}% ${q.glarePass?'✓':'⚠'}</strong></div><div class="metric"><span>Sharpness</span><strong>${q.sharpness.toFixed(0)} ${q.sharpness>=35?'✓':'⚠'}</strong></div><div class="metric"><span>Reference consistency</span><strong>${r.consistency.toFixed(0)}%</strong></div><div class="metric"><span>Test consistency</span><strong>${t.consistency.toFixed(0)}%</strong></div><div class="metric"><span>Colour distance</span><strong>${c.hueDistance.toFixed(1)}°</strong></div></div><div class="consistency-grid"><div class="metric"><span>Reference 3×3 sampling</span><div class="grid9">${r.points.map(()=>'<span></span>').join('')}</div></div><div class="metric"><span>Test 3×3 sampling</span><div class="grid9">${t.points.map(()=>'<span></span>').join('')}</div></div></div><p class="muted">Configured prototype threshold: 78% minimum 9-point consistency. Colour profiles are configurable and are not manufacturer-validated.</p><button class="primary-button large" id="continueToReview">Continue to result review →</button><button class="secondary-button large" id="retakeFromAnalysis">Retake image</button>`;$('continueToReview').onclick=()=>buildReview(a);$('retakeFromAnalysis').onclick=()=>{capturedImage=null;showView('capture');startTestCamera()}}
 async function buildReview(a){showView('review');const timestamp=new Date().toISOString();const imageHash=await sha256DataUrl(capturedImage);const testId='NARC-TEST-'+Date.now().toString(36).toUpperCase();const sealPayload={testId,operatorId:currentUser.badgeNumber,result:a.classification.category,timestamp,gps,subject:$('subjectName').value.trim(),drug:$('subjectDrug').value.trim(),quantity:$('subjectQuantity').value.trim(),reagent:a.reagent,imageHash,refAvg:a.ref.avg,testAvg:a.test.avg,refConsistency:a.ref.consistency,testConsistency:a.test.consistency,analysisVersion:'V2.9POINT.1'};const sealHash=await sha256Text(JSON.stringify(sealPayload));pendingRecord={...sealPayload,subjectPhotoDataUrl:subjectPhoto,testImageDataUrl:capturedImage,confidence:a.classification.confidence,reason:a.classification.reason,classificationProfile:'Prototype reagent profile',sealHash};renderReview()}
 function renderReview(){$('reviewResult').innerHTML=`<div class="result-banner ${pendingRecord.result.toLowerCase()}"><div class="eyebrow">RESULT READY</div><h3>${pendingRecord.result==='POSITIVE'?'PRESUMPTIVE POSITIVE':pendingRecord.result==='NEGATIVE'?'PRESUMPTIVE NEGATIVE':'INCONCLUSIVE'}</h3><p>${pendingRecord.reason}</p></div>`;$('reviewImage').src=pendingRecord.testImageDataUrl;$('reviewDetails').innerHTML=[['Test ID',pendingRecord.testId],['Officer',pendingRecord.operatorId],['Reagent',pendingRecord.reagent],['Subject',pendingRecord.subject],['Drug',pendingRecord.drug],['Quantity',pendingRecord.quantity],['Confidence',pendingRecord.confidence+'%'],['Location',gps?`${gps.lat}, ${gps.lon}`:'Unavailable'],['Reference consistency',pendingRecord.refConsistency.toFixed(1)+'%'],['Test consistency',pendingRecord.testConsistency.toFixed(1)+'%'],['Image SHA-256',pendingRecord.imageHash],['Seal',pendingRecord.sealHash]].map(x=>`<div class="metric"><span>${x[0]}</span><strong>${x[1]||'—'}</strong></div>`).join('')}
-async function saveRecord(){if(!pendingRecord)return;const btn=$('saveButton');btn.disabled=true;btn.textContent='Sealing…';try{const r=pendingRecord;const row={id:r.testId,ts:r.timestamp,operator_id:r.operatorId,test_type:r.reagent,result:r.result,confidence:r.confidence,gps_lat:gps?.lat??null,gps_lon:gps?.lon??null,gps_accuracy:gps?.accuracy??null,suspect_name:r.subject,aadhaar_number:$('subjectAadhaar').value.trim(),suspected_drug:r.drug,quantity_seized:r.quantity,suspect_photo_data_url:r.subjectPhotoDataUrl,test_image_data_url:r.testImageDataUrl,image_hash_ciphertext:r.sealHash,image_hash_iv:'plain-seal-v1'};if(sb){const {error}=await sb.from('tests').insert(row);if(error)throw error}const local=JSON.parse(localStorage.getItem('narcLocalRecords')||'[]');local.unshift(r);localStorage.setItem('narcLocalRecords',JSON.stringify(local));toast('Record sealed and saved');pendingRecord=null;resetTest();showView('records')}catch(e){console.error(e);toast('Save failed: '+e.message)}finally{btn.disabled=false;btn.innerHTML='Seal & save record <span>→</span>'}}
+async function saveRecord(){
+  if(!pendingRecord)return;
+
+  const btn=$('saveButton');
+  btn.disabled=true;
+  btn.textContent='Sealing…';
+
+  try{
+    const r=pendingRecord;
+
+    const row={
+      test_id:r.testId,
+      timestamp:r.timestamp,
+
+      officer_id:r.operatorId||null,
+      officer_name:currentUser?.name||null,
+
+      subject_name:r.subject||null,
+      aadhaar_number:$('subjectAadhaar').value.trim()||null,
+
+      drug:r.drug||null,
+      quantity:r.quantity||null,
+      reagent:r.reagent||null,
+
+      latitude:r.gps?.lat??null,
+      longitude:r.gps?.lon??null,
+      location:r.gps
+        ? `${r.gps.lat}, ${r.gps.lon}`
+        : null,
+
+      result:r.result||null,
+      confidence:r.confidence??null,
+
+      subject_photo:r.subjectPhotoDataUrl||null,
+      test_image:r.testImageDataUrl||null,
+
+      reference_colour:r.refAvg
+        ? JSON.stringify(r.refAvg)
+        : null,
+
+      test_colour:r.testAvg
+        ? JSON.stringify(r.testAvg)
+        : null,
+
+      colour_difference:r.colourDifference??null,
+
+      consistency_score:Math.min(
+        r.refConsistency??0,
+        r.testConsistency??0
+      ),
+
+      image_hash:r.imageHash||null,
+      sealed_hash:r.sealHash||null,
+
+      disclaimer:
+        'Field-screening result only. Not laboratory confirmation.'
+    };
+
+    if(!sb){
+      throw new Error('Supabase is not connected.');
+    }
+
+    const {error}=await sb
+      .from('narc_tests')
+      .insert(row);
+
+    if(error)throw error;
+
+    // Keep a local copy as well
+    const local=JSON.parse(
+      localStorage.getItem('narcLocalRecords')||'[]'
+    );
+
+    local.unshift(r);
+
+    localStorage.setItem(
+      'narcLocalRecords',
+      JSON.stringify(local)
+    );
+
+    toast('Record sealed and saved to Supabase');
+
+    pendingRecord=null;
+    resetTest();
+    showView('records');
+
+  }catch(e){
+
+    console.error(e);
+    toast('Save failed: '+e.message);
+
+  }finally{
+
+    btn.disabled=false;
+    btn.innerHTML='Seal & save record <span>→</span>';
+
+  }
+}
 function resetTest(){stopAll();subjectPhoto=null;capturedImage=null;gps=null;['subjectName','subjectAadhaar','subjectDrug','subjectQuantity'].forEach(id=>$(id).value='');$('subjectSnapshot').style.display='none';$('subjectVideo').style.display='block';$('captureSubjectButton').hidden=false;$('retakeSubjectButton').hidden=true}
 async function loadRecords(){let remote=[];if(sb){try{const {data,error}=await sb.from('tests').select('id,ts,operator_id,test_type,result,confidence,gps_lat,gps_lon,gps_accuracy,suspect_name,aadhaar_number,suspected_drug,quantity_seized,suspect_photo_data_url,test_image_data_url,image_hash_ciphertext,image_hash_iv').order('ts',{ascending:false});if(!error)remote=(data||[]).map(rowToRecord)}catch(e){console.warn(e)}}const local=JSON.parse(localStorage.getItem('narcLocalRecords')||'[]');const map=new Map();[...local,...remote].forEach(r=>map.set(r.testId,r));return [...map.values()].sort((a,b)=>new Date(b.timestamp)-new Date(a.timestamp))}
 function rowToRecord(r){return{testId:r.id,timestamp:r.ts,operatorId:r.operator_id,result:r.result,confidence:r.confidence,gps:r.gps_lat!=null?{lat:r.gps_lat,lon:r.gps_lon,accuracy:r.gps_accuracy}:null,subject:r.suspect_name,aadhaarNumber:r.aadhaar_number,drug:r.suspected_drug,quantity:r.quantity_seized,reagent:r.test_type,subjectPhotoDataUrl:r.suspect_photo_data_url,testImageDataUrl:r.test_image_data_url,sealHash:r.image_hash_ciphertext,hashIv:r.image_hash_iv||'plain-seal-v1',refConsistency:null,testConsistency:null}}
