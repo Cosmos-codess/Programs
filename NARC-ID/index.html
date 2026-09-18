@@ -2,8 +2,8 @@
 <html lang="en">
 <head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<title>NARC-ID V2 | Field Test Intelligence</title>
-<meta name="description" content="NARC-ID V2 field test documentation and integrity workflow.">
+<title>NARC-ID | Field Test Intelligence</title>
+<meta name="description" content="NARC-ID field test documentation and integrity workflow.">
 <link rel="stylesheet" href="styles.css">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
 </head>
@@ -11,7 +11,7 @@
 <div id="app">
   <section id="loginScreen" class="screen auth-screen active">
     <div class="auth-shell">
-      <div class="brand-lockup"><div class="brand-icon">N</div><div><div class="brand-name">NARC-ID</div><div class="brand-version">FIELD INTELLIGENCE • V2</div></div></div>
+      <div class="brand-lockup"><div class="brand-icon">N</div><div><div class="brand-name">NARC-ID</div><div class="brand-version">FIELD INTELLIGENCE</div></div></div>
       <div class="auth-card">
         <div class="status-badge"><span></span>SYSTEM READY</div>
         <h1>Field Test<br>Intelligence</h1>
@@ -47,13 +47,13 @@
   </section>
 
   <section id="appScreen" class="screen app-screen">
-    <header class="topbar"><div class="brand-lockup small"><div class="brand-icon">N</div><div><div class="brand-name">NARC-ID</div><div class="brand-version">FIELD SYSTEM V2</div></div></div><div class="session"><div class="avatar" id="avatar">OP</div><div><strong id="sessionName">Officer</strong><small id="sessionRole">—</small></div><button id="logoutButton" type="button">Log out</button></div></header>
+    <header class="topbar"><div class="brand-lockup small"><div class="brand-icon">N</div><div><div class="brand-name">NARC-ID</div><div class="brand-version">FIELD SYSTEM</div></div></div><div class="session"><div class="avatar" id="avatar">OP</div><div><strong id="sessionName">Officer</strong><small id="sessionRole">—</small></div><button id="logoutButton" type="button">Log out</button></div></header>
 
     <main id="dashboardView" class="view active">
       <div class="page-heading"><div><div class="eyebrow">FIELD OPERATIONS</div><h2>Dashboard</h2><p>Review activity or start a new field test.</p></div><span class="online"><i></i> ONLINE</span></div>
       <div class="dashboard-stats"><article><span>Today</span><strong id="statToday">0</strong><small>tests</small></article><article><span>7 days</span><strong id="statWeek">0</strong><small>tests</small></article><article><span>30 days</span><strong id="statMonth">0</strong><small>tests</small></article><article><span>Quantity</span><strong id="statQuantity">—</strong><small>recorded</small></article></div>
       <div class="dashboard-grid"><section class="panel chart-panel"><div class="panel-heading"><div><span class="eyebrow">LAST 7 DAYS</span><h3>Test activity</h3></div><select id="chartMetric" aria-label="Chart metric"><option value="tests">Tests</option><option value="positive">Presumptive Positive</option><option value="negative">Presumptive Negative</option><option value="inconclusive">Inconclusive</option></select></div><div class="chart" id="trendChart" aria-label="Seven day test activity"></div></section><section class="panel"><div class="panel-heading"><div><span class="eyebrow">OUTCOMES</span><h3>Current period</h3></div></div><div class="outcome-list"><div><span>Presumptive Positive</span><strong id="countPositive">0</strong></div><div><span>Presumptive Negative</span><strong id="countNegative">0</strong></div><div><span>Inconclusive</span><strong id="countInconclusive">0</strong></div></div></section></div>
-      <section class="panel"><div class="panel-heading"><div><span class="eyebrow">WEEKLY ACTIVITY</span><h3>Drug, quantity & location</h3></div><button class="secondary-button compact" id="openRecordsButton" type="button">View all records →</button></div><div class="table-scroll"><table><thead><tr><th>Date</th><th>Drug</th><th>Quantity</th><th>Location</th><th>Result</th><th>Officer</th></tr></thead><tbody id="dashboardTable"><tr><td colspan="6" class="muted">No records yet.</td></tr></tbody></table></div></section>
+      <section class="panel weekly-panel"><div class="panel-heading"><div><span class="eyebrow">WEEKLY ACTIVITY</span><h3>Activity by selected date</h3></div><button class="secondary-button compact" id="openRecordsButton" type="button">View all records →</button></div><div class="date-picker-row"><label for="activityDate">Select a date from the last 7 days<input id="activityDate" type="date"></label></div><div id="selectedDateSummary" class="selected-date-summary"></div><div id="dashboardDailyList" class="daily-activity-list"><div class="muted">Select a date to view activity.</div></div></section>
       <div class="dashboard-actions"><button class="primary-button large" id="startTestButton" type="button">＋ Start New Test <span>→</span></button><button class="secondary-button large" id="verifyButton" type="button">✓ Verify a Record</button></div>
       <section class="notice"><strong>Prototype notice</strong><p>Results are presumptive field-test documentation. They must not be treated as laboratory confirmation.</p></section>
     </main>

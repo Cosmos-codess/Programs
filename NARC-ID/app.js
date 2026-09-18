@@ -1,11 +1,10 @@
-/* NARC-ID V2 — integrated field workflow */
+/* NARC-ID — integrated field workflow */
 
 const SUPABASE_URL='https://dazxbtsexxojhvldvedt.supabase.co';
 
 /*
-IMPORTANT:
-Keep your existing SUPABASE_ANON_KEY line from your current app.js here.
-Do NOT replace it with a service-role key.
+  KEEP YOUR EXISTING SUPABASE PUBLISHABLE KEY HERE.
+  Do NOT put a service-role key in frontend JavaScript.
 */
 const SUPABASE_ANON_KEY='sb_publishable_H_9A1TNzhN748HfOoZfuCg_RSHLLkpu';
 
@@ -27,6 +26,7 @@ let capturedImage=null;
 let pendingRecord=null;
 let liveTimer=null;
 let records=[];
+let selectedActivityDate=null;
 
 const views=[
   'dashboard',
@@ -44,9 +44,7 @@ function toast(m){
   const e=$('toast');
   e.textContent=m;
   e.classList.add('show');
-
   clearTimeout(toast.t);
-
   toast.t=setTimeout(
     ()=>e.classList.remove('show'),
     2600
@@ -54,15 +52,14 @@ function toast(m){
 }
 
 function showView(name){
-
-  views.forEach(
-    v=>$(`${v}View`)?.classList.remove('active')
+  views.forEach(v=>
+    $(`${v}View`)?.classList.remove('active')
   );
 
   $(`${name}View`)?.classList.add('active');
 
-  qa('.nav-item').forEach(
-    n=>n.classList.toggle(
+  qa('.nav-item').forEach(n=>
+    n.classList.toggle(
       'active',
       n.dataset.nav===name
     )
@@ -73,40 +70,36 @@ function showView(name){
     behavior:'smooth'
   });
 
-  if(name==='subject')
-    startSubjectCamera();
+  if(name==='subject')startSubjectCamera();
+  if(name!=='subject')stopSubjectCamera();
 
-  if(name!=='subject')
-    stopSubjectCamera();
+  if(name!=='capture')stopTestCamera();
 
-  if(name!=='capture')
-    stopTestCamera();
+  if(name==='dashboard')loadDashboard();
 
-  if(name==='dashboard')
-    loadDashboard();
-
-  if(name==='records')
-    renderRecords();
+  if(name==='records')renderRecords();
 }
 
+
+/* =========================================================
+   HASHING / PASSWORD
+   ========================================================= */
+
 function bytesHex(buf){
-  return [
-    ...new Uint8Array(buf)
-  ]
-  .map(
-    b=>b.toString(16).padStart(2,'0')
-  )
-  .join('');
+  return [...new Uint8Array(buf)]
+    .map(b=>b.toString(16).padStart(2,'0'))
+    .join('');
 }
 
 function hexBuf(h){
   const a=new Uint8Array(h.length/2);
 
-  for(let i=0;i<a.length;i++)
+  for(let i=0;i<a.length;i++){
     a[i]=parseInt(
       h.slice(i*2,i*2+2),
       16
     );
+  }
 
   return a.buffer;
 }
@@ -120,7 +113,6 @@ function salt(){
 }
 
 async function hashPassword(p,s){
-
   const k=await crypto.subtle.importKey(
     'raw',
     new TextEncoder().encode(p),
@@ -143,8 +135,38 @@ async function hashPassword(p,s){
   );
 }
 
-async function sha256Text(t){
+/*
+  Stores:
+  salt$hash
 
+  This means we do NOT need a separate salt column
+  in narc_officers.
+*/
+async function createPasswordHash(password){
+  const s=salt();
+  const h=await hashPassword(password,s);
+  return `${s}$${h}`;
+}
+
+async function verifyPassword(password,stored){
+  if(!stored)return false;
+
+  const parts=stored.split('$');
+
+  if(parts.length!==2)return false;
+
+  const s=parts[0];
+  const expected=parts[1];
+
+  const actual=await hashPassword(
+    password,
+    s
+  );
+
+  return actual===expected;
+}
+
+async function sha256Text(t){
   return bytesHex(
     await crypto.subtle.digest(
       'SHA-256',
@@ -154,7 +176,6 @@ async function sha256Text(t){
 }
 
 async function sha256DataUrl(url){
-
   const b=await(
     await fetch(url)
   ).arrayBuffer();
@@ -171,25 +192,33 @@ function normalizeBadge(v){
   return v.trim().toUpperCase();
 }
 
+
+/* =========================================================
+   SUPABASE OFFICERS
+   ========================================================= */
+
 async function getOfficer(badge){
 
-  if(!sb)
-    return null;
+  if(!sb)return null;
 
   const {
     data,
     error
   }=await sb
-    .from('officers')
+    .from('narc_officers')
     .select('*')
-    .eq('badge_number',badge)
+    .eq('officer_id',badge)
     .maybeSingle();
 
-  if(error)
-    throw error;
+  if(error)throw error;
 
   return data;
 }
+
+
+/* =========================================================
+   CAMERAS
+   ========================================================= */
 
 function stopSubjectCamera(){
 
@@ -223,21 +252,18 @@ function stopTestCamera(){
 }
 
 function stopAll(){
-
   stopSubjectCamera();
   stopTestCamera();
 }
 
 async function startSubjectCamera(){
 
-  if(subjectStream||subjectPhoto)
-    return;
+  if(subjectStream||subjectPhoto)return;
 
   try{
 
     subjectStream=
       await navigator.mediaDevices.getUserMedia({
-
         video:{
           facingMode:{
             ideal:'user'
@@ -249,7 +275,6 @@ async function startSubjectCamera(){
             ideal:720
           }
         },
-
         audio:false
       });
 
@@ -271,9 +296,7 @@ $('captureSubjectButton').onclick=()=>{
   const v=$('subjectVideo');
 
   if(!v.videoWidth){
-
     toast('Camera is not ready');
-
     return;
   }
 
@@ -282,11 +305,17 @@ $('captureSubjectButton').onclick=()=>{
   c.width=v.videoWidth;
   c.height=v.videoHeight;
 
-  c.getContext('2d')
-    .drawImage(v,0,0);
+  c.getContext('2d').drawImage(
+    v,
+    0,
+    0
+  );
 
   subjectPhoto=
-    c.toDataURL('image/jpeg',.86);
+    c.toDataURL(
+      'image/jpeg',
+      .86
+    );
 
   $('subjectSnapshot').src=
     subjectPhoto;
@@ -357,11 +386,17 @@ $('continueSubjectButton').onclick=()=>{
   getGPS();
 };
 
+
+/* =========================================================
+   GPS
+   ========================================================= */
+
 async function getGPS(){
 
   if(!navigator.geolocation){
 
     gps=null;
+
     updateGPS();
 
     return;
@@ -409,6 +444,11 @@ function updateGPS(){
       :'GPS: unavailable';
 }
 
+
+/* =========================================================
+   TEST CAMERA
+   ========================================================= */
+
 async function startTestCamera(){
 
   stopTestCamera();
@@ -417,7 +457,6 @@ async function startTestCamera(){
 
     testStream=
       await navigator.mediaDevices.getUserMedia({
-
         video:{
           facingMode:{
             ideal:'environment'
@@ -429,22 +468,19 @@ async function startTestCamera(){
             ideal:720
           }
         },
-
         audio:false
       });
 
     $('testVideo').srcObject=
       testStream;
 
-    $('cameraCheck').textContent=
-      '✓';
+    $('cameraCheck').textContent='✓';
 
     runLiveChecks();
 
   }catch(e){
 
-    $('cameraCheck').textContent=
-      '!';
+    $('cameraCheck').textContent='!';
 
     toast(
       'Rear camera unavailable: '+e.message
@@ -459,8 +495,7 @@ function runLiveChecks(){
 
   const tick=()=>{
 
-    if(!testStream)
-      return;
+    if(!testStream)return;
 
     if(v.videoWidth){
 
@@ -509,6 +544,11 @@ function runLiveChecks(){
 
   tick();
 }
+
+
+/* =========================================================
+   IMAGE ANALYSIS
+   ========================================================= */
 
 function sampleRegion(
   ctx,
@@ -574,32 +614,33 @@ function sampleRegion(
       .587*d[i+1]+
       .114*d[i+2];
 
-    minL=
-      Math.min(minL,l);
+    minL=Math.min(
+      minL,
+      l
+    );
 
-    maxL=
-      Math.max(maxL,l);
+    maxL=Math.max(
+      maxL,
+      l
+    );
   }
 
   return{
-
     r:r/n,
     g:g/n,
     b:b/n,
-
-    avgLum:
-      (r+g+b)/(3*n),
-
-    contrast:
-      maxL-minL
+    avgLum:(r+g+b)/(3*n),
+    contrast:maxL-minL
   };
 }
 
-/*
-  3×3 = 9 point colour sampling.
 
-  Each point samples a small neighbourhood,
-  rather than using only one pixel.
+/*
+  3 × 3 = 9 points.
+
+  Each point samples a small neighbourhood.
+  The 9 samples are averaged.
+  Variation between them becomes the consistency score.
 */
 function ninePoint(
   ctx,
@@ -612,23 +653,19 @@ function ninePoint(
 
   const xs=[
     .18,
-    .50,
+    .5,
     .82
   ];
 
   const ys=[
     .18,
-    .50,
+    .5,
     .82
   ];
 
-  for(
-    const yf of ys
-  ){
+  for(const yf of ys){
 
-    for(
-      const xf of xs
-    ){
+    for(const xf of xs){
 
       const cx=
         zone.x+
@@ -672,11 +709,12 @@ function ninePoint(
 
   const distances=
     pts.map(
-      p=>Math.sqrt(
-        (p.r-avg.r)**2+
-        (p.g-avg.g)**2+
-        (p.b-avg.b)**2
-      )
+      p=>
+        Math.sqrt(
+          (p.r-avg.r)**2+
+          (p.g-avg.g)**2+
+          (p.b-avg.b)**2
+        )
     );
 
   const meanDist=
@@ -695,25 +733,15 @@ function ninePoint(
     );
 
   return{
-
     points:pts,
-
     avg,
-
     meanDist,
-
     consistency,
-
-    valid:
-      consistency>=78
+    valid:consistency>=70
   };
 }
 
-function rgbToHsv(
-  r,
-  g,
-  b
-){
+function rgbToHsv(r,g,b){
 
   r/=255;
   g/=255;
@@ -733,217 +761,184 @@ function rgbToHsv(
   if(d){
 
     if(mx===r)
-
-      h=
-        60*
-        (((g-b)/d)%6);
+      h=60*(((g-b)/d)%6);
 
     else if(mx===g)
-
-      h=
-        60*
-        ((b-r)/d+2);
+      h=60*((b-r)/d+2);
 
     else
+      h=60*((r-g)/d+4);
 
-      h=
-        60*
-        ((r-g)/d+4);
-
-    if(h<0)
-      h+=360;
+    if(h<0)h+=360;
   }
 
   return{
-
     h,
-
-    s:
-      mx
-        ?d/mx
-        :0,
-
+    s:mx?d/mx:0,
     v:mx
   };
 }
 
-const POS_HUES={
-
-  Marquis:280,
-
-  Mecke:170,
-
-  "Simon's":210,
-
-  Scott:210,
-
-  Other:280
-
-};
-
-function colourDistance(a,b){
-
-  return Math.sqrt(
-    (a.r-b.r)**2+
-    (a.g-b.g)**2+
-    (a.b-b.b)**2
-  );
-}
 
 /*
-  Current prototype classifier.
+  Prototype reagent reaction-colour profiles.
+  These are NOT manufacturer-validated forensic thresholds.
 
-  IMPORTANT:
-  This is NOT laboratory-validated chemistry.
+  The classification logic uses the measured TEST colour and asks:
+  "Does this colour fall inside one of the configured positive
+  reaction-colour families for the selected reagent?"
+
+  9-point consistency remains a QUALITY check only; it does not
+  decide positive/negative by itself.
 */
+const REACTION_PROFILES={
+  Marquis:{
+    positive:[
+      {name:'Purple / black',hMin:250,hMax:330,sMin:.15,darkMaxV:.28},
+      {name:'Orange / brown',hMin:8,hMax:55,sMin:.15}
+    ]
+  },
+  Mecke:{
+    positive:[
+      {name:'Blue-green / green',hMin:110,hMax:200,sMin:.15},
+      {name:'Purple',hMin:250,hMax:330,sMin:.15}
+    ]
+  },
+  "Simon's":{
+    positive:[
+      {name:'Blue',hMin:195,hMax:250,sMin:.15}
+    ]
+  },
+  Scott:{
+    positive:[
+      {name:'Blue',hMin:195,hMax:250,sMin:.15}
+    ]
+  },
+  Other:{positive:[]}
+};
+
+function hueInRange(h,min,max){
+  return h>=min&&h<=max;
+}
+
+// Euclidean RGB colour distance. Used only as a diagnostic measurement
+// between the reference and test regions.
+function colourDistance(a,b){
+  const dr=(a.r||0)-(b.r||0);
+  const dg=(a.g||0)-(b.g||0);
+  const db=(a.b||0)-(b.b||0);
+  return Math.sqrt(dr*dr+dg*dg+db*db);
+}
+
 function classify(
   ref,
   test,
   reagent
 ){
+  /*
+    Prototype decision model:
+    1. Require consistent 9-point samples.
+    2. Normalize test brightness against the reference.
+    3. Check the measured TEST colour against the selected reagent's
+       configured positive reaction-colour families.
+    4. If it matches a configured positive reaction colour, classify
+       as presumptive positive; otherwise classify as presumptive negative.
 
-  const hsv=
-    rgbToHsv(
-      test.avg.r,
-      test.avg.g,
-      test.avg.b
-    );
+    These thresholds are for the presentation prototype only and are
+    NOT manufacturer-validated forensic thresholds.
+  */
+  const refLum=Math.max(
+    1,
+    (ref.avg.r+ref.avg.g+ref.avg.b)/3
+  );
 
-  const target=
-    POS_HUES[reagent]??280;
-
-  const hd=
-    Math.abs(
-      hsv.h-target
-    );
-
-  const hueDist=
-    hd>180
-      ?360-hd
-      :hd;
-
-  const refLum=
-    Math.max(
-      1,
-      (
-        ref.avg.r+
-        ref.avg.g+
-        ref.avg.b
-      )/3
-    );
-
-  const scale=
-    200/refLum;
-
+  const scale=200/refLum;
   const corrected={
-
-    r:Math.min(
-      255,
-      test.avg.r*scale
-    ),
-
-    g:Math.min(
-      255,
-      test.avg.g*scale
-    ),
-
-    b:Math.min(
-      255,
-      test.avg.b*scale
-    )
+    r:Math.min(255,test.avg.r*scale),
+    g:Math.min(255,test.avg.g*scale),
+    b:Math.min(255,test.avg.b*scale)
   };
 
-  const ch=
-    rgbToHsv(
-      corrected.r,
-      corrected.g,
-      corrected.b
-    );
+  const refHsv=rgbToHsv(ref.avg.r,ref.avg.g,ref.avg.b);
+  const testHsv=rgbToHsv(corrected.r,corrected.g,corrected.b);
 
-  const sat=ch.s;
+  const rgbDifference=colourDistance(ref.avg,test.avg);
+  const rawHueShift=Math.abs(testHsv.h-refHsv.h);
+  const hueShift=rawHueShift>180?360-rawHueShift:rawHueShift;
+  const consistency=Math.min(ref.consistency,test.consistency);
 
-  let category=
-    'INCONCLUSIVE';
+  const profiles=REACTION_PROFILES[reagent]?.positive||[];
+  let matchedReaction=null;
 
+  for(const profile of profiles){
+    if(profile.darkMaxV!=null && testHsv.v<=profile.darkMaxV){
+      matchedReaction=profile.name;
+      break;
+    }
+
+    if(
+      hueInRange(testHsv.h,profile.hMin,profile.hMax) &&
+      testHsv.s>=profile.sMin
+    ){
+      matchedReaction=profile.name;
+      break;
+    }
+  }
+
+  /* Keep hueDistance for the existing presentation diagnostics. */
+  const hueDistance=matchedReaction
+    ?0
+    :profiles.length
+      ?Math.min(...profiles.map(profile=>{
+          if(profile.darkMaxV!=null&&testHsv.v<=profile.darkMaxV)return 0;
+          if(testHsv.h<profile.hMin)return profile.hMin-testHsv.h;
+          if(testHsv.h>profile.hMax)return testHsv.h-profile.hMax;
+          return 0;
+        }))
+      :null;
+
+  let category='INCONCLUSIVE';
   let reason='';
 
   if(!ref.valid||!test.valid){
-
-    reason=
-      'Colour variation across the sampled area is too high.';
-
-  }else if(sat<.15){
-
-    category=
-      'NEGATIVE';
-
-    reason=
-      'No sufficiently saturated colour response detected under the configured prototype criteria.';
-
-  }else if(hueDist<=40){
-
-    category=
-      'POSITIVE';
-
-    reason=
-      'Colour response is within the configured prototype positive hue range.';
-
-  }else if(hueDist>=75){
-
-    category=
-      'NEGATIVE';
-
-    reason=
-      'Colour response is outside the configured prototype positive range.';
-
+    reason='Colour variation across the sampled area is too high.';
+  }else if(!profiles.length){
+    reason='No configured positive reaction-colour profile is available for this reagent.';
+  }else if(matchedReaction){
+    category='POSITIVE';
+    reason=`The measured test colour matches the configured ${matchedReaction} reaction-colour profile for ${reagent}.`;
   }else{
-
-    reason=
-      'Colour response falls between configured decision ranges.';
+    category='NEGATIVE';
+    reason=`The measured test colour does not match any configured positive reaction-colour profile for ${reagent}.`;
   }
 
-  const confidence=
-    category==='INCONCLUSIVE'
-
-      ?Math.round(
-        Math.min(
-          ref.consistency,
-          test.consistency
-        )
-      )
-
-      :Math.round(
-        Math.max(
-          0,
-          Math.min(
-            100,
-            100-
-            hueDist*.55+
-            (
-              Math.min(
-                ref.consistency,
-                test.consistency
-              )-78
-            )*.35
-          )
-        )
-      );
+  const confidence=category==='INCONCLUSIVE'
+    ?Math.round(consistency)
+    :Math.round(Math.max(0,Math.min(100,
+      55+
+      Math.min(25,rgbDifference*.35)+
+      (matchedReaction?20:0)+
+      Math.max(0,hueShift-15)*.15+
+      (consistency-70)*.2
+    )));
 
   return{
-
     category,
-
     confidence,
-
-    hue:ch.h,
-
-    hueDistance:hueDist,
-
+    hue:testHsv.h,
+    hueDistance,
+    hueShift,
+    referenceHue:refHsv.h,
+    colourDifference:rgbDifference,
     corrected,
-
+    matchedReaction,
     reason
   };
 }
+
+/* =========================================================
+   CAPTURE
+   ========================================================= */
 
 function capture(){
 
@@ -952,9 +947,7 @@ function capture(){
 
   if(!v.videoWidth){
 
-    toast(
-      'Camera is not ready'
-    );
+    toast('Camera is not ready');
 
     return;
   }
@@ -992,44 +985,41 @@ $('captureButton').onclick=
   capture;
 
 
-/*
-  UPDATED ANALYSIS
+/* =========================================================
+   ANALYSIS
+   ========================================================= */
 
-  This version fixes the glare bug and
-  records each individual quality check.
-*/
 function runAnalysis(c){
 
   showView('analysis');
 
   $('analysisContent').innerHTML=`
-
-    <div class="eyebrow">
-      ANALYSIS
-    </div>
-
-    <h2>
-      Running quality and 9-point checks…
-    </h2>
-
+    <div class="eyebrow">ANALYSIS</div>
+    <h2>Running quality and 9-point checks…</h2>
     <p class="lead">
-      The image is being measured before
-      a classification is shown.
+      The image is being measured before a classification is shown.
     </p>
-
   `;
 
   setTimeout(()=>{
 
-    const ctx=c.getContext(
-      '2d',
-      {
-        willReadFrequently:true
-      }
-    );
+    /*
+      Performance guard: camera captures can be several thousand pixels wide.
+      The field-test analysis only needs reliable colour/quality measurements,
+      so analyze a bounded copy instead of the full-resolution camera frame.
+      The relative 3×3 sampling zones stay exactly the same.
+    */
+    const analysisMax=1000;
+    const scale=Math.min(1,analysisMax/Math.max(c.width,c.height));
+    const analysisCanvas=document.createElement('canvas');
+    analysisCanvas.width=Math.max(1,Math.round(c.width*scale));
+    analysisCanvas.height=Math.max(1,Math.round(c.height*scale));
+    const analysisCtx=analysisCanvas.getContext('2d',{willReadFrequently:true});
+    analysisCtx.drawImage(c,0,0,analysisCanvas.width,analysisCanvas.height);
 
-    const W=c.width;
-    const H=c.height;
+    const ctx=analysisCtx;
+    const W=analysisCanvas.width;
+    const H=analysisCanvas.height;
 
     const ref=ninePoint(
       ctx,
@@ -1059,29 +1049,27 @@ function runAnalysis(c){
       H
     );
 
-    const whole=sampleRegion(
-      ctx,
-      0,
-      0,
-      1,
-      1,
-      W,
-      H
-    );
+    const whole=
+      sampleRegion(
+        ctx,
+        0,
+        0,
+        1,
+        1,
+        W,
+        H
+      );
 
     /*
-      FIXED:
-      The old code used whole.glare,
-      but sampleRegion() does not contain
-      a glare property.
-
-      We now calculate glare separately.
+      FIX:
+      glare() returns the glare percentage.
+      sampleRegion() does NOT return whole.glare.
     */
     const glareValue=
       glare(ctx);
 
     const sharpnessValue=
-      sharpness(c);
+      sharpness(analysisCanvas);
 
     const quality={
 
@@ -1095,14 +1083,14 @@ function runAnalysis(c){
         sharpnessValue,
 
       brightnessPass:
-        whole.avgLum>=45 &&
+        whole.avgLum>=45&&
         whole.avgLum<=215,
 
       glarePass:
-        glareValue<8,
+        glareValue<12,
 
       sharpnessPass:
-        sharpnessValue>=35,
+        sharpnessValue>=20,
 
       refPass:
         ref.valid,
@@ -1122,10 +1110,10 @@ function runAnalysis(c){
       );
 
     const qualityPassed=
-      quality.brightnessPass &&
-      quality.glarePass &&
-      quality.sharpnessPass &&
-      quality.refPass &&
+      quality.brightnessPass&&
+      quality.glarePass&&
+      quality.sharpnessPass&&
+      quality.refPass&&
       quality.testPass;
 
     pendingRecord={
@@ -1145,6 +1133,11 @@ function runAnalysis(c){
 
   },350);
 }
+
+
+/* =========================================================
+   GLARE
+   ========================================================= */
 
 function glare(ctx){
 
@@ -1169,11 +1162,12 @@ function glare(ctx){
   ){
 
     if(
-      d[i]>248 &&
-      d[i+1]>248 &&
+      d[i]>248&&
+      d[i+1]>248&&
       d[i+2]>248
-    )
+    ){
       b++;
+    }
 
     n++;
   }
@@ -1183,15 +1177,12 @@ function glare(ctx){
     :0;
 }
 
-function sharpness(c){
 
-  const ctx=
-    c.getContext(
-      '2d',
-      {
-        willReadFrequently:true
-      }
-    );
+/* =========================================================
+   SHARPNESS
+   ========================================================= */
+
+function sharpness(c){
 
   const W=
     Math.min(
@@ -1302,11 +1293,10 @@ function sharpness(c){
 }
 
 
-/*
-  UPDATED ANALYSIS DISPLAY
+/* =========================================================
+   ANALYSIS SCREEN
+   ========================================================= */
 
-  This shows exactly which check failed.
-*/
 function renderAnalysis(
   a,
   qualityPassed
@@ -1317,52 +1307,42 @@ function renderAnalysis(
   const t=a.test;
   const c=a.classification;
 
-  const failedChecks=[];
-
-  if(!q.brightnessPass){
-
-    failedChecks.push(
-      `Brightness (${q.brightness.toFixed(0)})`
-    );
-  }
-
-  if(!q.glarePass){
-
-    failedChecks.push(
-      `Glare (${q.glare.toFixed(1)}%)`
-    );
-  }
-
-  if(!q.sharpnessPass){
-
-    failedChecks.push(
-      `Sharpness (${q.sharpness.toFixed(0)})`
-    );
-  }
-
-  if(!q.refPass){
-
-    failedChecks.push(
-      `Reference consistency (${r.consistency.toFixed(0)}%)`
-    );
-  }
-
-  if(!q.testPass){
-
-    failedChecks.push(
-      `Test consistency (${t.consistency.toFixed(0)}%)`
-    );
-  }
-
   const finalCategory=
     qualityPassed
       ?c.category
       :'INCONCLUSIVE';
 
-  const finalReason=
-    qualityPassed
-      ?c.reason
-      :'One or more image-quality checks did not pass.';
+  let finalReason;
+
+  if(qualityPassed){
+
+    finalReason=
+      c.reason;
+
+  }else{
+
+    const failed=[];
+
+    if(!q.brightnessPass)
+      failed.push('Brightness');
+
+    if(!q.glarePass)
+      failed.push('Glare');
+
+    if(!q.sharpnessPass)
+      failed.push('Sharpness');
+
+    if(!q.refPass)
+      failed.push('Reference 9-point consistency');
+
+    if(!q.testPass)
+      failed.push('Test 9-point consistency');
+
+    finalReason=
+      'Quality checks failed: '+
+      failed.join(', ')+
+      '.';
+  }
 
   a.classification.category=
     finalCategory;
@@ -1372,6 +1352,74 @@ function renderAnalysis(
 
   const cls=
     finalCategory.toLowerCase();
+
+  const failedChecks=[];
+
+  if(!q.brightnessPass)
+    failedChecks.push(
+      'Brightness is outside the acceptable range.'
+    );
+
+  if(!q.glarePass)
+    failedChecks.push(
+      'Too much glare was detected.'
+    );
+
+  if(!q.sharpnessPass)
+    failedChecks.push(
+      'Image sharpness is below the configured threshold.'
+    );
+
+  if(!q.refPass)
+    failedChecks.push(
+      'Reference area has inconsistent colour.'
+    );
+
+  if(!q.testPass)
+    failedChecks.push(
+      'Test area has inconsistent colour.'
+    );
+
+  const diagnostics=
+    failedChecks.length
+      ?`
+        <div class="panel">
+          <div class="eyebrow">
+            QUALITY DIAGNOSTICS
+          </div>
+
+          <h3>
+            Checks that need attention
+          </h3>
+
+          <ul>
+            ${failedChecks
+              .map(x=>`<li>${x}</li>`)
+              .join('')}
+          </ul>
+
+          <p class="muted">
+            Because one or more critical quality checks failed,
+            this image is classified as INCONCLUSIVE.
+          </p>
+        </div>
+      `
+      :`
+        <div class="panel">
+          <div class="eyebrow">
+            QUALITY DIAGNOSTICS
+          </div>
+
+          <h3>
+            ✓ All critical quality checks passed
+          </h3>
+
+          <p class="muted">
+            The image passed brightness, glare, sharpness
+            and 9-point consistency checks.
+          </p>
+        </div>
+      `;
 
   $('analysisContent').innerHTML=`
 
@@ -1392,7 +1440,7 @@ function renderAnalysis(
       </h3>
 
       <p>
-        ${finalReason}
+        ${escapeHtml(finalReason)}
       </p>
 
     </div>
@@ -1401,128 +1449,63 @@ function renderAnalysis(
     <div class="analysis-grid">
 
       <div class="metric">
-
-        <span>
-          Brightness
-        </span>
-
+        <span>Brightness</span>
         <strong>
           ${q.brightness.toFixed(0)}
           ${q.brightnessPass?'✓':'⚠'}
         </strong>
-
       </div>
 
-
       <div class="metric">
-
-        <span>
-          Glare
-        </span>
-
+        <span>Glare</span>
         <strong>
           ${q.glare.toFixed(1)}%
           ${q.glarePass?'✓':'⚠'}
         </strong>
-
       </div>
 
-
       <div class="metric">
-
-        <span>
-          Sharpness
-        </span>
-
+        <span>Sharpness</span>
         <strong>
           ${q.sharpness.toFixed(0)}
           ${q.sharpnessPass?'✓':'⚠'}
         </strong>
-
       </div>
 
-
       <div class="metric">
-
-        <span>
-          Reference consistency
-        </span>
-
+        <span>Reference consistency</span>
         <strong>
           ${r.consistency.toFixed(0)}%
           ${r.valid?'✓':'⚠'}
         </strong>
-
       </div>
 
-
       <div class="metric">
-
-        <span>
-          Test consistency
-        </span>
-
+        <span>Test consistency</span>
         <strong>
           ${t.consistency.toFixed(0)}%
           ${t.valid?'✓':'⚠'}
         </strong>
-
       </div>
 
-
       <div class="metric">
-
-        <span>
-          Colour distance
-        </span>
-
+        <span>Hue distance</span>
         <strong>
           ${c.hueDistance.toFixed(1)}°
         </strong>
+      </div>
 
+      <div class="metric">
+        <span>RGB colour difference</span>
+        <strong>
+          ${c.colourDifference.toFixed(1)}
+        </strong>
       </div>
 
     </div>
 
 
-    <div class="panel">
-
-      <div class="eyebrow">
-        QUALITY DIAGNOSTICS
-      </div>
-
-      <h3>
-        ${
-          failedChecks.length===0
-            ?'✓ All quality checks passed'
-            :'⚠ Checks that failed'
-        }
-      </h3>
-
-      ${
-        failedChecks.length===0
-
-          ?`
-            <p class="muted">
-              The captured image passed
-              all configured quality checks.
-            </p>
-          `
-
-          :`
-            <ul>
-              ${
-                failedChecks
-                  .map(
-                    item=>`<li>${item}</li>`
-                  )
-                  .join('')
-              }
-            </ul>
-          `
-      }
-
-    </div>
+    ${diagnostics}
 
 
     <div class="consistency-grid">
@@ -1535,13 +1518,22 @@ function renderAnalysis(
 
         <div class="grid9">
 
-          ${
-            r.points
-              .map(
-                ()=>'<span></span>'
-              )
-              .join('')
-          }
+          ${r.points
+            .map(
+              p=>`
+                <span
+                  title="RGB ${Math.round(p.r)}, ${Math.round(p.g)}, ${Math.round(p.b)}"
+                  style="
+                    background:rgb(
+                      ${Math.round(p.r)},
+                      ${Math.round(p.g)},
+                      ${Math.round(p.b)}
+                    )
+                  "
+                ></span>
+              `
+            )
+            .join('')}
 
         </div>
 
@@ -1556,13 +1548,22 @@ function renderAnalysis(
 
         <div class="grid9">
 
-          ${
-            t.points
-              .map(
-                ()=>'<span></span>'
-              )
-              .join('')
-          }
+          ${t.points
+            .map(
+              p=>`
+                <span
+                  title="RGB ${Math.round(p.r)}, ${Math.round(p.g)}, ${Math.round(p.b)}"
+                  style="
+                    background:rgb(
+                      ${Math.round(p.r)},
+                      ${Math.round(p.g)},
+                      ${Math.round(p.b)}
+                    )
+                  "
+                ></span>
+              `
+            )
+            .join('')}
 
         </div>
 
@@ -1572,13 +1573,10 @@ function renderAnalysis(
 
 
     <p class="muted">
-
       Configured prototype threshold:
       78% minimum 9-point consistency.
-
-      Colour profiles are configurable
-      and are not manufacturer-validated.
-
+      Colour profiles are configurable and are
+      not manufacturer-validated.
     </p>
 
 
@@ -1596,7 +1594,6 @@ function renderAnalysis(
     >
       Retake image
     </button>
-
   `;
 
   $('continueToReview').onclick=
@@ -1611,6 +1608,11 @@ function renderAnalysis(
     startTestCamera();
   };
 }
+
+
+/* =========================================================
+   BUILD REVIEW
+   ========================================================= */
 
 async function buildReview(a){
 
@@ -1645,19 +1647,13 @@ async function buildReview(a){
     gps,
 
     subject:
-      $('subjectName')
-        .value
-        .trim(),
+      $('subjectName').value.trim(),
 
     drug:
-      $('subjectDrug')
-        .value
-        .trim(),
+      $('subjectDrug').value.trim(),
 
     quantity:
-      $('subjectQuantity')
-        .value
-        .trim(),
+      $('subjectQuantity').value.trim(),
 
     reagent:
       a.reagent,
@@ -1676,6 +1672,9 @@ async function buildReview(a){
     testConsistency:
       a.test.consistency,
 
+    colourDifference:
+      a.classification.colourDifference,
+
     analysisVersion:
       'V2.9POINT.1'
   };
@@ -1688,7 +1687,6 @@ async function buildReview(a){
     );
 
   pendingRecord={
-
     ...sealPayload,
 
     subjectPhotoDataUrl:
@@ -1712,18 +1710,24 @@ async function buildReview(a){
   renderReview();
 }
 
+
+/* =========================================================
+   REVIEW SCREEN
+   ========================================================= */
+
 function renderReview(){
 
   $('reviewResult').innerHTML=`
 
-    <div class="result-banner ${pendingRecord.result.toLowerCase()}">
+    <div class="result-banner ${
+      pendingRecord.result.toLowerCase()
+    }">
 
       <div class="eyebrow">
         RESULT READY
       </div>
 
       <h3>
-
         ${
           pendingRecord.result==='POSITIVE'
             ?'PRESUMPTIVE POSITIVE'
@@ -1731,15 +1735,15 @@ function renderReview(){
               ?'PRESUMPTIVE NEGATIVE'
               :'INCONCLUSIVE'
         }
-
       </h3>
 
       <p>
-        ${pendingRecord.reason}
+        ${escapeHtml(
+          pendingRecord.reason
+        )}
       </p>
 
     </div>
-
   `;
 
   $('reviewImage').src=
@@ -1747,92 +1751,72 @@ function renderReview(){
 
   $('reviewDetails').innerHTML=[
 
-    [
-      'Test ID',
-      pendingRecord.testId
-    ],
+    ['Test ID',pendingRecord.testId],
 
-    [
-      'Officer',
-      pendingRecord.operatorId
-    ],
+    ['Officer',pendingRecord.operatorId],
 
-    [
-      'Reagent',
-      pendingRecord.reagent
-    ],
+    ['Reagent',pendingRecord.reagent],
 
-    [
-      'Subject',
-      pendingRecord.subject
-    ],
+    ['Subject',pendingRecord.subject],
 
-    [
-      'Drug',
-      pendingRecord.drug
-    ],
+    ['Drug',pendingRecord.drug],
 
-    [
-      'Quantity',
-      pendingRecord.quantity
-    ],
+    ['Quantity',pendingRecord.quantity],
 
-    [
-      'Confidence',
+    ['Confidence',
       pendingRecord.confidence+'%'
     ],
 
-    [
-      'Location',
+    ['Location',
       gps
         ?`${gps.lat}, ${gps.lon}`
         :'Unavailable'
     ],
 
-    [
-      'Reference consistency',
-      pendingRecord.refConsistency
-        .toFixed(1)+'%'
+    ['Reference consistency',
+      pendingRecord.refConsistency.toFixed(1)+'%'
     ],
 
-    [
-      'Test consistency',
-      pendingRecord.testConsistency
-        .toFixed(1)+'%'
+    ['Test consistency',
+      pendingRecord.testConsistency.toFixed(1)+'%'
     ],
 
-    [
-      'Image SHA-256',
+    ['Colour difference',
+      pendingRecord.colourDifference?.toFixed(1)??'—'
+    ],
+
+    ['Image SHA-256',
       pendingRecord.imageHash
     ],
 
-    [
-      'Seal',
+    ['Seal',
       pendingRecord.sealHash
     ]
 
   ]
-
   .map(
     x=>`
       <div class="metric">
         <span>${x[0]}</span>
-        <strong>
-          ${x[1]||'—'}
-        </strong>
+        <strong>${escapeHtml(
+          String(x[1]??'—')
+        )}</strong>
       </div>
     `
   )
   .join('');
 }
 
+
+/* =========================================================
+   SAVE RECORD → NEW narc_tests TABLE
+   ========================================================= */
+
 async function saveRecord(){
 
-  if(!pendingRecord)
-    return;
+  if(!pendingRecord)return;
 
-  const btn=
-    $('saveButton');
+  const btn=$('saveButton');
 
   btn.disabled=true;
 
@@ -1841,8 +1825,7 @@ async function saveRecord(){
 
   try{
 
-    const r=
-      pendingRecord;
+    const r=pendingRecord;
 
     const row={
 
@@ -1862,9 +1845,7 @@ async function saveRecord(){
         r.subject||null,
 
       aadhaar_number:
-        $('subjectAadhaar')
-          .value
-          .trim()||null,
+        $('subjectAadhaar').value.trim()||null,
 
       drug:
         r.drug||null,
@@ -1940,8 +1921,10 @@ async function saveRecord(){
       .from('narc_tests')
       .insert(row);
 
-    if(error)
-      throw error;
+    if(error)throw error;
+
+
+    /* Local backup */
 
     const local=
       JSON.parse(
@@ -1984,14 +1967,17 @@ async function saveRecord(){
   }
 }
 
+
+/* =========================================================
+   RESET
+   ========================================================= */
+
 function resetTest(){
 
   stopAll();
 
   subjectPhoto=null;
-
   capturedImage=null;
-
   gps=null;
 
   [
@@ -1999,23 +1985,30 @@ function resetTest(){
     'subjectAadhaar',
     'subjectDrug',
     'subjectQuantity'
-  ]
-  .forEach(
-    id=>$(id).value=''
+  ].forEach(
+    id=>{
+      if($(id))
+        $(id).value='';
+    }
   );
 
-  $('subjectSnapshot')
-    .style.display='none';
+  $('subjectSnapshot').style.display=
+    'none';
 
-  $('subjectVideo')
-    .style.display='block';
+  $('subjectVideo').style.display=
+    'block';
 
-  $('captureSubjectButton')
-    .hidden=false;
+  $('captureSubjectButton').hidden=
+    false;
 
-  $('retakeSubjectButton')
-    .hidden=true;
+  $('retakeSubjectButton').hidden=
+    true;
 }
+
+
+/* =========================================================
+   LOAD RECORDS FROM NEW narc_tests TABLE
+   ========================================================= */
 
 async function loadRecords(){
 
@@ -2029,28 +2022,52 @@ async function loadRecords(){
         data,
         error
       }=await sb
-        .from('tests')
-        .select(
-          'id,ts,operator_id,test_type,result,confidence,gps_lat,gps_lon,gps_accuracy,suspect_name,aadhaar_number,suspected_drug,quantity_seized,suspect_photo_data_url,test_image_data_url,image_hash_ciphertext,image_hash_iv'
-        )
+        .from('narc_tests')
+        .select(`
+          test_id,
+          timestamp,
+          officer_id,
+          officer_name,
+          subject_name,
+          aadhaar_number,
+          drug,
+          quantity,
+          reagent,
+          latitude,
+          longitude,
+          location,
+          result,
+          confidence,
+          subject_photo,
+          test_image,
+          reference_colour,
+          test_colour,
+          colour_difference,
+          consistency_score,
+          image_hash,
+          sealed_hash,
+          disclaimer
+        `)
         .order(
-          'ts',
+          'timestamp',
           {
             ascending:false
           }
         );
 
-      if(!error)
+      if(!error){
 
         remote=
           (data||[])
             .map(rowToRecord);
+      }
 
     }catch(e){
 
       console.warn(e);
     }
   }
+
 
   const local=
     JSON.parse(
@@ -2059,14 +2076,12 @@ async function loadRecords(){
       )||'[]'
     );
 
-  const map=
-    new Map();
+  const map=new Map();
 
   [
     ...local,
     ...remote
-  ]
-  .forEach(
+  ].forEach(
     r=>map.set(
       r.testId,
       r
@@ -2075,73 +2090,148 @@ async function loadRecords(){
 
   return[
     ...map.values()
-  ]
-  .sort(
+  ].sort(
     (a,b)=>
       new Date(b.timestamp)-
       new Date(a.timestamp)
   );
 }
 
+
+/* =========================================================
+   SUPABASE ROW → APP RECORD
+   ========================================================= */
+
 function rowToRecord(r){
+
+  let refAvg=null;
+  let testAvg=null;
+
+  try{
+
+    if(r.reference_colour)
+      refAvg=
+        JSON.parse(
+          r.reference_colour
+        );
+
+  }catch(e){
+    console.warn(
+      'Reference colour parse failed',
+      e
+    );
+  }
+
+  try{
+
+    if(r.test_colour)
+      testAvg=
+        JSON.parse(
+          r.test_colour
+        );
+
+  }catch(e){
+    console.warn(
+      'Test colour parse failed',
+      e
+    );
+  }
+
 
   return{
 
-    testId:r.id,
+    testId:
+      r.test_id,
 
-    timestamp:r.ts,
+    timestamp:
+      r.timestamp,
 
     operatorId:
-      r.operator_id,
+      r.officer_id,
+
+    officerName:
+      r.officer_name,
 
     result:
       r.result,
 
     confidence:
-      r.confidence,
+      Number(r.confidence)||0,
 
     gps:
-      r.gps_lat!=null
+      r.latitude!=null
         ?{
-          lat:r.gps_lat,
-          lon:r.gps_lon,
-          accuracy:r.gps_accuracy
+          lat:Number(r.latitude),
+          lon:Number(r.longitude),
+          accuracy:null
         }
         :null,
 
     subject:
-      r.suspect_name,
+      r.subject_name,
 
     aadhaarNumber:
       r.aadhaar_number,
 
     drug:
-      r.suspected_drug,
+      r.drug,
 
     quantity:
-      r.quantity_seized,
+      r.quantity,
 
     reagent:
-      r.test_type,
+      r.reagent,
 
     subjectPhotoDataUrl:
-      r.suspect_photo_data_url,
+      r.subject_photo,
 
     testImageDataUrl:
-      r.test_image_data_url,
+      r.test_image,
+
+    refAvg,
+
+    testAvg,
+
+    colourDifference:
+      r.colour_difference!=null
+        ?Number(r.colour_difference)
+        :null,
+
+    refConsistency:
+      r.consistency_score!=null
+        ?Number(r.consistency_score)
+        :null,
+
+    testConsistency:
+      r.consistency_score!=null
+        ?Number(r.consistency_score)
+        :null,
+
+    imageHash:
+      r.image_hash,
 
     sealHash:
-      r.image_hash_ciphertext,
+      r.sealed_hash,
 
     hashIv:
-      r.image_hash_iv||
       'plain-seal-v1',
 
-    refConsistency:null,
+    analysisVersion:
+      'V2.9POINT.1',
 
-    testConsistency:null
+    reason:
+      r.disclaimer||
+      'Field-screening record, not laboratory confirmation.',
+
+    location:
+      r.location
   };
 }
+
+
+/* =========================================================
+   DASHBOARD
+   ========================================================= */
 
 function withinDays(r,d){
 
@@ -2158,8 +2248,7 @@ async function loadDashboard(){
     await loadRecords();
 
   const today=
-    new Date()
-      .toDateString();
+    new Date().toDateString();
 
   const todayN=
     records.filter(
@@ -2189,25 +2278,21 @@ async function loadDashboard(){
     month.length;
 
   $('statQuantity').textContent=
-    week
-      .reduce(
-        (a,r)=>
-          a+
-          (
-            parseFloat(
-              String(
-                r.quantity||''
-              )
-              .replace(
-                /[^0-9.]/g,
-                ''
-              )
-            )||0
-          ),
-        0
-      )
-      .toFixed(2)
-      +' g';
+    week.reduce(
+      (a,r)=>
+        a+
+        (
+          parseFloat(
+            String(
+              r.quantity||''
+            ).replace(
+              /[^0-9.]/g,
+              ''
+            )
+          )||0
+        ),
+      0
+    ).toFixed(2)+' g';
 
   $('countPositive').textContent=
     week.filter(
@@ -2229,9 +2314,8 @@ async function loadDashboard(){
     $('chartMetric').value
   );
 
-  renderDashboardTable(
-    week
-  );
+  setupActivityDatePicker();
+  renderDashboardActivity(week, selectedActivityDate);
 }
 
 function drawChart(
@@ -2254,7 +2338,6 @@ function drawChart(
       );
 
     days.push({
-
       label:
         d.toLocaleDateString(
           undefined,
@@ -2281,11 +2364,10 @@ function drawChart(
           ).toDateString()
       );
 
-    if(d)
-      d.v++;
+    if(d)d.v++;
   });
 
-  if(metric!=='tests')
+  if(metric!=='tests'){
 
     days.forEach(d=>{
 
@@ -2300,6 +2382,7 @@ function drawChart(
             metric.toUpperCase()
         ).length;
     });
+  }
 
   const max=
     Math.max(
@@ -2310,40 +2393,41 @@ function drawChart(
     );
 
   $('trendChart').innerHTML=
-    days
-      .map(
-        d=>`
+    days.map(
+      d=>`
+        <div class="bar-col">
 
-          <div class="bar-col">
+          <span class="bar-value">
+            ${d.v}
+          </span>
 
-            <span class="bar-value">
-              ${d.v}
-            </span>
-
-            <div
-              class="bar"
-              style="height:${Math.max(
+          <div
+            class="bar"
+            style="
+              height:${Math.max(
                 3,
                 d.v/max*78
-              )}%"
-            ></div>
+              )}%
+            "
+          ></div>
 
-            <span class="bar-label">
-              ${d.label}
-            </span>
+          <span class="bar-label">
+            ${d.label}
+          </span>
 
-          </div>
-
-        `
-      )
-      .join('');
+        </div>
+      `
+    ).join('');
 }
 
 function locationText(r){
 
-  return r.gps
-    ?`${r.gps.lat.toFixed(4)}, ${r.gps.lon.toFixed(4)}`
-    :'—';
+  if(r.gps){
+
+    return `${r.gps.lat.toFixed(4)}, ${r.gps.lon.toFixed(4)}`;
+  }
+
+  return r.location||'—';
 }
 
 function pill(r){
@@ -2356,9 +2440,7 @@ function pill(r){
         :'inconclusive';
 
   return`
-
     <span class="result-pill ${c}">
-
       ${
         r.result==='POSITIVE'
           ?'PRESUMPTIVE POSITIVE'
@@ -2366,71 +2448,85 @@ function pill(r){
             ?'PRESUMPTIVE NEGATIVE'
             :'INCONCLUSIVE'
       }
-
     </span>
-
   `;
 }
 
-function renderDashboardTable(rs){
-
-  $('dashboardTable').innerHTML=
-    rs
-      .slice(0,8)
-      .map(
-        r=>`
-
-          <tr>
-
-            <td>
-              ${new Date(
-                r.timestamp
-              ).toLocaleDateString()}
-            </td>
-
-            <td>
-              ${escapeHtml(
-                r.drug||'—'
-              )}
-            </td>
-
-            <td>
-              ${escapeHtml(
-                r.quantity||'—'
-              )}
-            </td>
-
-            <td>
-              ${locationText(r)}
-            </td>
-
-            <td>
-              ${pill(r)}
-            </td>
-
-            <td>
-              ${escapeHtml(
-                r.operatorId||'—'
-              )}
-            </td>
-
-          </tr>
-
-        `
-      )
-      .join('')
-
-    ||
-
-    '<tr><td colspan="6" class="muted">No records in the last 7 days.</td></tr>';
+function localDateKey(d){
+  const x=d instanceof Date?new Date(d):new Date(d);
+  const y=x.getFullYear();
+  const m=String(x.getMonth()+1).padStart(2,'0');
+  const day=String(x.getDate()).padStart(2,'0');
+  return `${y}-${m}-${day}`;
 }
+
+function setupActivityDatePicker(){
+  const input=$('activityDate');
+  if(!input)return;
+
+  const today=new Date();
+  const min=new Date();
+  min.setDate(today.getDate()-6);
+
+  input.max=localDateKey(today);
+  input.min=localDateKey(min);
+
+  if(!selectedActivityDate||selectedActivityDate<input.min||selectedActivityDate>input.max){
+    selectedActivityDate=localDateKey(today);
+  }
+
+  input.value=selectedActivityDate;
+
+  input.onchange=()=>{
+    const value=input.value;
+    if(value<input.min||value>input.max){
+      toast('Please select a date from the last 7 days.');
+      input.value=selectedActivityDate;
+      return;
+    }
+    selectedActivityDate=value;
+    renderDashboardActivity(records.filter(r=>withinDays(r,7)), selectedActivityDate);
+  };
+}
+
+function renderDashboardActivity(rs,dateKey){
+  const list=$('dashboardDailyList');
+  const summary=$('selectedDateSummary');
+  if(!list||!summary)return;
+
+  const dayRecords=rs.filter(r=>localDateKey(r.timestamp)===dateKey);
+  const displayDate=new Date(`${dateKey}T00:00:00`).toLocaleDateString(undefined,{weekday:'long',day:'numeric',month:'short',year:'numeric'});
+
+  summary.innerHTML=`<div class="selected-date-card"><strong>${escapeHtml(displayDate)}</strong><span>${dayRecords.length} test${dayRecords.length===1?'':'s'} recorded</span></div>`;
+
+  if(!dayRecords.length){
+    list.innerHTML='<div class="empty-activity">No tests recorded on this date.</div>';
+    return;
+  }
+
+  list.innerHTML=dayRecords.map(r=>`
+    <article class="daily-activity-card">
+      <div class="daily-activity-main">
+        <strong>${escapeHtml(r.drug||'Drug not specified')}</strong>
+        <span>${escapeHtml(r.quantity||'Quantity not specified')}</span>
+      </div>
+      <div class="daily-activity-location">
+        <span>LOCATION</span>
+        <strong>${escapeHtml(locationText(r))}</strong>
+      </div>
+    </article>
+  `).join('');
+}
+
+/* =========================================================
+   RECORDS
+   ========================================================= */
 
 function renderRecords(){
 
   const search=
-    (
-      $('recordSearch')?.value||''
-    ).toLowerCase();
+    ($('recordSearch')?.value||'')
+      .toLowerCase();
 
   const op=
     $('recordOperatorFilter')?.value||'';
@@ -2438,8 +2534,7 @@ function renderRecords(){
   let rs=
     records.filter(
       r=>
-        (
-          !op||
+        (!op||
           r.operatorId===op
         )&&
         (
@@ -2450,8 +2545,7 @@ function renderRecords(){
             r.result,
             r.operatorId,
             r.testId
-          ]
-          .some(
+          ].some(
             x=>
               String(
                 x||''
@@ -2463,94 +2557,97 @@ function renderRecords(){
     );
 
   $('recordList').innerHTML=
-    rs
-      .map(
-        r=>`
+    rs.map(
+      r=>`
+        <article
+          class="record-card"
+          data-id="${r.testId}"
+        >
 
-          <article
-            class="record-card"
-            data-id="${r.testId}"
-          >
+          <div class="record-head">
 
-            <div class="record-head">
+            <div>
 
-              <div>
-
-                <div class="eyebrow">
-                  ${new Date(
-                    r.timestamp
-                  ).toLocaleString()}
-                </div>
-
-                <strong>
-                  ${escapeHtml(
-                    r.testId
-                  )}
-                </strong>
-
+              <div class="eyebrow">
+                ${new Date(
+                  r.timestamp
+                ).toLocaleString()}
               </div>
 
-              ${pill(r)}
+              <strong>
+                ${escapeHtml(
+                  r.testId
+                )}
+              </strong>
 
             </div>
 
-            <div class="record-meta">
+            ${pill(r)}
 
-              <div>
-                <span>Subject</span>
-                <strong>
-                  ${escapeHtml(
-                    r.subject||'—'
-                  )}
-                </strong>
-              </div>
+          </div>
 
-              <div>
-                <span>Drug</span>
-                <strong>
-                  ${escapeHtml(
-                    r.drug||'—'
-                  )}
-                </strong>
-              </div>
+          <div class="record-meta">
 
-              <div>
-                <span>Quantity</span>
-                <strong>
-                  ${escapeHtml(
-                    r.quantity||'—'
-                  )}
-                </strong>
-              </div>
-
-              <div>
-                <span>Location</span>
-                <strong>
-                  ${locationText(r)}
-                </strong>
-              </div>
-
+            <div>
+              <span>Subject</span>
+              <strong>
+                ${escapeHtml(
+                  r.subject||'—'
+                )}
+              </strong>
             </div>
 
-          </article>
+            <div>
+              <span>Drug</span>
+              <strong>
+                ${escapeHtml(
+                  r.drug||'—'
+                )}
+              </strong>
+            </div>
 
-        `
-      )
-      .join('')
+            <div>
+              <span>Quantity</span>
+              <strong>
+                ${escapeHtml(
+                  r.quantity||'—'
+                )}
+              </strong>
+            </div>
 
+            <div>
+              <span>Location</span>
+              <strong>
+                ${locationText(r)}
+              </strong>
+            </div>
+
+          </div>
+
+        </article>
+      `
+    )
+    .join('')
     ||
+    `
+      <p class="muted">
+        No matching records.
+      </p>
+    `;
 
-    '<p class="muted">No matching records.</p>';
-
-  qa('.record-card')
-    .forEach(
-      e=>
-        e.onclick=
-          ()=>openDetail(
-            e.dataset.id
-          )
-    );
+  qa('.record-card').forEach(
+    e=>
+      e.onclick=
+        ()=>openDetail(
+          e.dataset.id
+        )
+  );
 }
+
+
+/* =========================================================
+   RECORD DETAIL
+   ========================================================= */
 
 function openDetail(id){
 
@@ -2559,18 +2656,18 @@ function openDetail(id){
       x=>x.testId===id
     );
 
-  if(!r)
-    return;
+  if(!r)return;
 
   $('detailTitle').textContent=
     r.testId;
 
   $('detailResult').innerHTML=`
 
-    <div class="result-banner ${r.result.toLowerCase()}">
+    <div class="result-banner ${
+      r.result.toLowerCase()
+    }">
 
       <h3>
-
         ${
           r.result==='POSITIVE'
             ?'PRESUMPTIVE POSITIVE'
@@ -2578,7 +2675,6 @@ function openDetail(id){
               ?'PRESUMPTIVE NEGATIVE'
               :'INCONCLUSIVE'
         }
-
       </h3>
 
       <p>
@@ -2587,7 +2683,6 @@ function openDetail(id){
       </p>
 
     </div>
-
   `;
 
   $('detailSubjectImage').src=
@@ -2603,61 +2698,34 @@ function openDetail(id){
 
   $('detailFields').innerHTML=[
 
-    [
-      'Subject',
-      r.subject
-    ],
+    ['Subject',r.subject],
 
-    [
-      'Aadhaar / ID',
-      r.aadhaarNumber
-    ],
+    ['Aadhaar / ID',
+      r.aadhaarNumber],
 
-    [
-      'Drug',
-      r.drug
-    ],
+    ['Drug',r.drug],
 
-    [
-      'Quantity',
-      r.quantity
-    ],
+    ['Quantity',r.quantity],
 
-    [
-      'Reagent',
-      r.reagent
-    ],
+    ['Reagent',r.reagent],
 
-    [
-      'Officer',
-      r.operatorId
-    ],
+    ['Officer',r.operatorId],
 
-    [
-      'Timestamp',
-      r.timestamp
-    ],
+    ['Timestamp',r.timestamp],
 
-    [
-      'GPS',
-      locationText(r)
-    ],
+    ['GPS',locationText(r)],
 
-    [
-      'Confidence',
-      r.confidence+'%'
-    ],
+    ['Confidence',
+      r.confidence+'%'],
 
-    [
-      'Seal',
-      r.sealHash
-    ]
+    ['Colour difference',
+      r.colourDifference],
+
+    ['Seal',r.sealHash]
 
   ]
-
   .map(
     x=>`
-
       <div class="metric">
 
         <span>
@@ -2673,13 +2741,11 @@ function openDetail(id){
         </strong>
 
       </div>
-
     `
   )
   .join('');
 
-  $('detailVerifyResult')
-    .textContent='';
+  $('detailVerifyResult').textContent='';
 
   $('detailVerifyButton').onclick=
     ()=>verifyObject(
@@ -2689,6 +2755,11 @@ function openDetail(id){
 
   showView('detail');
 }
+
+
+/* =========================================================
+   VERIFY RECORD
+   ========================================================= */
 
 async function verifyObject(
   r,
@@ -2705,6 +2776,7 @@ async function verifyObject(
     if(
       r.hashIv==='plain-seal-v1'||
       r.hashIv===''
+
     ){
 
       const payload={
@@ -2751,8 +2823,12 @@ async function verifyObject(
         testConsistency:
           r.testConsistency,
 
+        colourDifference:
+          r.colourDifference,
+
         analysisVersion:
-          r.analysisVersion
+          r.analysisVersion||
+          'V2.9POINT.1'
       };
 
       if(
@@ -2767,8 +2843,7 @@ async function verifyObject(
                 payload
               )
             )
-          )===
-          r.sealHash;
+          )===r.sealHash;
 
       }else{
 
@@ -2782,13 +2857,15 @@ async function verifyObject(
 
     box.className=
       'verification-box '+
-      (ok?'ok':'bad');
+      (
+        ok
+          ?'ok'
+          :'bad'
+      );
 
     box.innerHTML=
       ok
-
         ?'✓ INTEGRITY VERIFIED — sealed record matches its stored integrity data.'
-
         :'⚠ Verification unavailable or mismatch. The record should be reviewed.';
 
   }catch(e){
@@ -2833,24 +2910,31 @@ $('verifyRecordButton').onclick=
       r,
       box
     );
-  };
+};
+
+
+/* =========================================================
+   UTILITY
+   ========================================================= */
 
 function escapeHtml(v){
 
-  return String(v)
-    .replace(
-      /[&<>"']/g,
-      c=>({
-
-        '&':'&amp;',
-        '<':'&lt;',
-        '>':'&gt;',
-        '"':'&quot;',
-        "'":'&#039;'
-
-      }[c])
-    );
+  return String(v).replace(
+    /[&<>"']/g,
+    c=>({
+      '&':'&amp;',
+      '<':'&lt;',
+      '>':'&gt;',
+      '"':'&quot;',
+      "'":'&#039;'
+    }[c])
+  );
 }
+
+
+/* =========================================================
+   LOGIN
+   ========================================================= */
 
 $('loginForm').onsubmit=
   async e=>{
@@ -2870,8 +2954,7 @@ $('loginForm').onsubmit=
     const pw=
       $('loginPassword').value;
 
-    if(!badge||!pw)
-      return;
+    if(!badge||!pw)return;
 
     try{
 
@@ -2888,15 +2971,13 @@ $('loginForm').onsubmit=
         return;
       }
 
-      const h=
-        await hashPassword(
+      const valid=
+        await verifyPassword(
           pw,
-          u.salt
+          u.password_hash
         );
 
-      if(
-        h!==u.password_hash
-      ){
+      if(!valid){
 
         err.textContent=
           'Incorrect password.';
@@ -2904,17 +2985,30 @@ $('loginForm').onsubmit=
         return;
       }
 
+      const roleText=
+        String(
+          u.role||
+          'Field Officer'
+        );
+
+      const normalizedRole=
+        roleText
+          .toLowerCase()
+          .includes('supervisor')
+          ?'supervisor'
+          :'Field Officer';
+
       currentUser={
 
         badgeNumber:
-          u.badge_number,
+          u.officer_id,
 
         role:
-          u.role,
+          normalizedRole,
 
         name:
           u.name||
-          u.badge_number
+          u.officer_id
       };
 
       sessionStorage.setItem(
@@ -2928,11 +3022,18 @@ $('loginForm').onsubmit=
 
     }catch(e){
 
+      console.error(e);
+
       err.textContent=
         'Sign-in failed: '+
         e.message;
     }
   };
+
+
+/* =========================================================
+   REGISTRATION → NEW narc_officers TABLE
+   ========================================================= */
 
 $('registerForm').onsubmit=
   async e=>{
@@ -2949,16 +3050,34 @@ $('registerForm').onsubmit=
         $('regBadge').value
       );
 
-    const role=
+    const roleValue=
       q(
         'input[name="regRole"]:checked'
-      ).value;
+      )?.value||
+      'field_officer';
+
+    const role=
+      roleValue==='supervisor'
+        ?'Supervisor'
+        :'Field Officer';
 
     const pw=
       $('regPassword').value;
 
     const pw2=
       $('regPassword2').value;
+
+    /*
+      If your HTML contains regName,
+      it will be used.
+
+      If it doesn't, the badge is used
+      as a fallback so the registration
+      doesn't break.
+    */
+    const name=
+      $('regName')?.value.trim()||
+      badge;
 
     if(
       !badge||
@@ -2976,45 +3095,35 @@ $('registerForm').onsubmit=
 
     try{
 
-      if(
-        await getOfficer(
-          badge
-        )
-      ){
-
-        err.textContent=
-          'An account with this badge already exists.';
-
-        return;
+      if(!sb){
+        throw new Error('Supabase is not connected. Refresh the page and try again.');
       }
 
-      const s=salt();
-
-      const h=
-        await hashPassword(
-          pw,
-          s
+      const passwordHash=
+        await createPasswordHash(
+          pw
         );
 
       const {
         error
-      }=
-        await sb
-          .from('officers')
-          .insert({
+      }=await sb
+        .from('narc_officers')
+        .insert({
 
-            badge_number:
-              badge,
+          officer_id:
+            badge,
 
-            role,
+          name:
+            name,
 
-            salt:s,
+          password_hash:
+            passwordHash,
 
-            password_hash:h
-          });
+          role:
+            role
+        });
 
-      if(error)
-        throw error;
+      if(error)throw error;
 
       $('loginBadge').value=
         badge;
@@ -3027,11 +3136,23 @@ $('registerForm').onsubmit=
 
     }catch(e){
 
+      console.error(e);
+
+      const msg=String(e?.message||e);
+
       err.textContent=
-        'Registration failed: '+
-        e.message;
+        msg.includes('duplicate key')||msg.includes('unique constraint')
+          ?'That Officer / Badge ID is already registered.'
+          :msg.includes('row-level security')
+            ?'Registration was blocked by Supabase Row Level Security. Check the INSERT policy on narc_officers.'
+            :'Registration failed: '+msg;
     }
   };
+
+
+/* =========================================================
+   AUTH / SESSION
+   ========================================================= */
 
 function showAuth(n){
 
@@ -3109,6 +3230,11 @@ function onLogin(){
   loadDashboard();
 }
 
+
+/* =========================================================
+   BUTTONS
+   ========================================================= */
+
 $('startTestButton').onclick=
   ()=>showView('subject');
 
@@ -3165,23 +3291,26 @@ $('recordSearch').oninput=
 $('recordOperatorFilter').onchange=
   renderRecords;
 
-qa('[data-back]')
-  .forEach(
-    b=>
-      b.onclick=()=>{
-        stopAll();
-        showView('dashboard');
-      }
-  );
+qa('[data-back]').forEach(
+  b=>
+    b.onclick=()=>{
+      stopAll();
+      showView('dashboard');
+    }
+);
 
-qa('.nav-item')
-  .forEach(
-    b=>
-      b.onclick=
-        ()=>showView(
-          b.dataset.nav
-        )
-  );
+qa('.nav-item').forEach(
+  b=>
+    b.onclick=
+      ()=>showView(
+        b.dataset.nav
+      )
+);
+
+
+/* =========================================================
+   RESTORE SESSION
+   ========================================================= */
 
 (async()=>{
 
